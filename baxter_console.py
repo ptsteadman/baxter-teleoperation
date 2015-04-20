@@ -1,7 +1,6 @@
 import code
-import teleoperate
 import time
-import threading
+import multiprocessing
 
 
 banner = "WELCOME TO BAXTER"
@@ -12,19 +11,25 @@ class BaxterInterface(object):
         self.test = "test"
         self.motion_state = "idle"
         self.loop = None
+        self.queue = multiprocessing.Queue()
         self.current_image = None
         self.stopped = False
-        #self.loop = threading.Thread(target=self.control_loop(5))
+        self.loop = multiprocessing.Process(target=self.control_loop,
+                args=(10,))
+        self.loop.start()
         
     def control_loop(self, t):
         while not self.stopped:
+            if not self.queue.empty():
+                self.motion_state = self.queue.get()
+            print "\n" +  self.motion_state
             time.sleep(t)
         
     def idle(self): 
-        self.motion_state = "idle"
+        self.queue.put("idle")
     
     def standby(self): 
-        self.motion_state = "standby"
+        self.queue.put("standby")
         
     def start_teleoperation(self, transition):
         # first, execute transition
