@@ -25,7 +25,6 @@ class BaxterInterface(object):
 
     def __init__(self):
         ''' Initializes the interface to Baxter.  Baxter should already be enabled. '''
-
         # initialize console variables
         self.state = dict()
         self.state["mode"] = "idle"
@@ -69,6 +68,7 @@ class BaxterInterface(object):
 
     def control_loop(self, t):
         while not rospy.is_shutdown():
+            print "loop entered"
             # USER COMMANDS: empty the queue of console commands
             while not self.queue.empty():
                 command = self.queue.get()
@@ -86,6 +86,8 @@ class BaxterInterface(object):
                 if joint_angles is not None:
                     self.left_limb.set_joint_positions(joint_angles['left'])
                     self.right_limb.set_joint_positions(joint_angles['right'])
+            if self.state["mode"] == "load_csv":
+                print "load csv file"
 
             # SCREEN IMAGES 
             if self.image_timer is not None:
@@ -156,7 +158,7 @@ class BaxterInterface(object):
         display on Baxter.
         @param path: path to the image file to load and send
         """
-        img = cv2.imread("images\\" + path)
+        img = cv2.imread(path)
         msg = cv_bridge.CvBridge().cv2_to_imgmsg(img, encoding="bgr8")
         pub = rospy.Publisher('/robot/xdisplay', Image, latch=True, queue_size=1)
         pub.publish(msg)
