@@ -1,4 +1,4 @@
-## HRI DP2
+## Baxter Teleoperation using Kinect and the Oculus Rift
 
 This repository contains code for Human Robot Interaction Design Project Two, 
 by Patrick Steadman, Tauhidur Rahman, and  Moumita Basuroychowdhury.
