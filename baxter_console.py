@@ -157,6 +157,7 @@ class BaxterInterface(object):
     def interact(self):
         baxter = self
         code.interact(banner=banner, local=locals())
+        
     def load_position_file(self, filename):
         with open(filename).readlines() as filelines:
             keys = filelines[0].split(',')
