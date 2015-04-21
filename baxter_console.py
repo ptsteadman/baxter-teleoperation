@@ -158,7 +158,7 @@ class BaxterInterface(object):
         display on Baxter.
         @param path: path to the image file to load and send
         """
-        img = cv2.imread(path)
+        img = cv2.imread('images/' + path)
         msg = cv_bridge.CvBridge().cv2_to_imgmsg(img, encoding="bgr8")
         pub = rospy.Publisher('/robot/xdisplay', Image, latch=True, queue_size=1)
         pub.publish(msg)
