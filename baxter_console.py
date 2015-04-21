@@ -16,10 +16,11 @@ import argparse
 import cv2
 import cv_bridge
 import threading
+import stopthread
 from sensor_msgs.msg import Image
 
 banner = "WELCOME TO BAXTER"
-DEFAULT_RATE = 1000
+DEFAULT_RATE = .05
 IDLE_ANGLES = {
     'right_s0' : 0,
     'right_s1' : 0,
@@ -38,16 +39,18 @@ IDLE_ANGLES = {
     'head_pan' : 0,
     'nod' : 0
     }
-DEFAULT_IMAGE = 'go.png'
+DEFAULT_IMAGE = 'on.png'
+
+#commands
+#start: self.thread.start()
+#stop: self.exit = True
+#start teleop: self.queue_state({'position_mode' : 'start_teleoperation', 'scenario_number' : 2})
 
 class BaxterInterface(object):
 
     def __init__(self):
         ''' Initializes the interface to Baxter.  Baxter should already be enabled. '''
         # initialize console variables
-        self.state = dict()
-        self.state["mode"] = "idle"
-        self.state_lock = threading.Lock()
         self.image_timer = None
         self.image_queue = deque()
         self.image_queue_lock = threading.Lock()
@@ -89,10 +92,8 @@ class BaxterInterface(object):
                 #args=(10,))
         #self.loop.start()
         self.exit = False
-        self.right_limb.set_joint_positions(IDLE_ANGLES)
-        self.left_limb.set_joint_positions(IDLE_ANGLES)
-        self.head.set_pan(0)
-        self.send_image(DEFAULT_IMAGE)
+        #starting position
+        self.idle_position()
 
 
         
@@ -107,6 +108,8 @@ class BaxterInterface(object):
                     self.left_limb.set_joint_positions(joint_angles['left'])
                     self.right_limb.set_joint_positions(joint_angles['right'])
             
+            
+            #STATE
             #pop state queue if other queues are empty
             self.state_queue_lock.acquire()
             self.motion_queue_lock.acquire()
@@ -114,38 +117,47 @@ class BaxterInterface(object):
             empty_queues = len(self.motion_queue) == 0 and len(self.image_queue) == 0
             self.motion_queue_lock.release()
             self.image_queue_lock.release()
-            if len(self.motion_queue) == 0 and len(self.image_queue) == 0 and len(self.state_queue) > 0:
+            #motion and image queues were released in case we need to add to them
+            if empty and len(self.state_queue) > 0:
                 #pop state
                 next_state = self.state_queue.pop()
+                #look for image data
                 if 'image_mode' in next_state:
+                    #load a csv file for images
                     if next_state['image_mode'] == 'load_csv_file':
                         self.load_images_file(next_state['image_filepath'])
+                    #list of images with duration
                     elif next_state['image_mode'] == 'list':
                         for image in next_state['image_list']:
                             self.queue_image(image['filepath'], image['duration'])
-                                             
+                #look for position data                             
                 if 'position_mode' in next_state:
                     self.teleop = False
+                    #load a csv file for positions
                     if next_state['position_mode'] == 'load_csv_file':
                         self.load_position_file(filename)
+                    #list of positions with duration
                     elif next_state['position_mode'] == 'list':
                         for motion in next_state['position_list']:
                             self.add_motion(motion["duration"], motion["angles"])
+                    #start teleoperation
                     elif next_state['position_mode'] == 'teleoperation':
                        self.teleop = True
                        self.motion_timer = None  
-                elif 'start_teleoperation' in next_state:
-                    self.start_teleoperation(next_state['scenario_number'])
-                    self.state_queue.appendleft({'position_mode' : 'teleoperation'})
+                    #start teleop WITH transitions first
+		            elif next_state['position_mode'] ==  'start_teleoperation':
+		                self.start_teleoperation(next_state['scenario_number'])
+		                self.state_queue.appendleft({'position_mode' : 'teleoperation'})
             self.state_queue_lock.release()       
                             
             
-            
+            #POSITION
             #motion queue checking
             self.motion_queue_lock.acquire()
             if self.motion_timer is not None:
                 self.motion_timer = self.motion_timer + self.rate
-            if len(self.motion_queue) >= 0:
+            if len(self.motion_queue) > 0:
+                #ready to publish new motion
                 if self.motion_timer is None:
                    self.right_limb.set_joint_positions(self.motion_queue[0])
                    self.left_limb.set_joint_positions(self.motion_queue[0])
@@ -155,36 +167,37 @@ class BaxterInterface(object):
                        self.head.command_nod()
                        
                    self.motion_timer = 0
-                   
-                elif self.motion_timer > self.motion_queue[0]['duration']:
+                #motion expired (publish new motion next turn if queue not empty)
+                elif self.motion_timer >= self.motion_queue[0]['duration']:
                     self.motion_queue.pop()
                     if len(self.motion_queue) == 0:
                        self.right_limb.set_joint_positions(IDLE_ANGLES)
                        self.left_limb.set_joint_positions(IDLE_ANGLES)
                        self.head.set_pan(0)
                        
-                    self.motion_timer == 0
+                    self.motion_timer == None
             self.motion_queue_lock.release()
             
-            # SCREEN IMAGES 
+            #IMAGE
+            #image queue check 
             self.image_queue_lock.acquire()
             if self.image_timer is not None:
                 self.image_timer = self.image_timer + self.rate
             if len(self.image_queue) > 0:
+            	#ready to publish new image
                 if self.image_timer is None:
                     self.send_image(self.image_queue[0]['path'])
                     self.image_timer = 0
-                elif self.image_timer > self.image_queue[0]['duration']:
+                #image expired (publish new image next turn if queue not empty)
+                elif self.image_timer >= self.image_queue[0]['duration']:
                     self.image_queue.pop()
-                    if len(self.image_queue) > 0:
-                        self.send_image(self.image_queue[0]['path'])
-                        self.image_timer = 0
                     if len(self.image_queue) == 0:
                         self.send_image(DEFAULT_IMAGE)
-                        self.image_timer = None
+                    self.image_timer = None
             self.image_queue_lock.release()
            
             time.sleep(self.rate)
+        
         
         self.thread.stop()
         if self.exit:
@@ -201,6 +214,7 @@ class BaxterInterface(object):
     def standby(self): 
         self.queue_file("standby.csv")
         self.queue_image("on.png", 5)
+
         
     def start_teleoperation(self, transition):
         # first, execute transition
@@ -217,8 +231,6 @@ class BaxterInterface(object):
             elif transition == 3:
                 self.queue_image("on with patrick.png", 3)
 
-    def stop_teleoperation(self):
-        self.queue.put({"mode":"idle"})
 
     
     def queue_image(self, new_image, duration):
@@ -271,9 +283,16 @@ class BaxterInterface(object):
         self.state_queue_lock.acquire()
         self.state_queue.append(dict)
         self.state_queue_lock.release()
-        
+     
+
    
-        
+    def idle_position(self):
+         self.right_limb.set_joint_positions(IDLE_ANGLES)
+         self.left_limb.set_joint_positions(IDLE_ANGLES)
+         self.head.set_pan(IDLE_ANGLES['head_pan'])
+         self.send_image(DEFAULT_IMAGE)
+
+         
     def add_motion(self, duration, motion_dict):
         self.motion_queue_lock.acquire()
         self.motion_queue.append({"duration" : position_pieces[0], "positions" : this_position_dict}) 
