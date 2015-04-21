@@ -10,6 +10,13 @@ import baxter_interface
 from baxter_interface import CHECK_VERSION
 import rospy
 import baxter_interface
+import os
+import sys
+import argparse
+import cv2
+import cv_bridge
+
+from sensor_msgs.msg import Image
 
 banner = "WELCOME TO BAXTER"
 DEFAULT_RATE = 1000
@@ -17,7 +24,9 @@ DEFAULT_RATE = 1000
 class BaxterInterface(object):
 
     def __init__(self):
-        # initialize variables
+        ''' Initializes the interface to Baxter.  Baxter should already be enabled. '''
+
+        # initialize console variables
         self.state = dict()
         self.state["mode"] = "idle"
         self.image_timer = None
@@ -25,14 +34,10 @@ class BaxterInterface(object):
         self.motion_queue = deque()
         self.motion_timer = None
         self.queue = multiprocessing.Queue()
-        self.tfBuffer = tf2_ros.Buffer()
-        self.listener = tf2_ros.TransformListener(tfBuffer)
-        self.rate = rospy.Rate(DEFAULT_RATE)
         self.mirrored = False
         self.user = 1
 
         # initialize the robot
-
         print("Initializing node... ")
         rospy.init_node("teleoperation")
         print("Getting robot state... ")
@@ -49,17 +54,18 @@ class BaxterInterface(object):
         print("Enabling robot... ")
         rs.enable()
 
+        # create interfaces to limbs and kinect tracking
         self.left_limb = baxter_interface.Limb('left')
         self.right_limb = baxter_interface.Limb('right')
+        self.tfBuffer = tf2_ros.Buffer()
+        self.listener = tf2_ros.TransformListener(self.tfBuffer)
+        self.rate = rospy.Rate(DEFAULT_RATE)
 
         # create and start the command loop
         self.loop = multiprocessing.Process(target=self.control_loop,
                 args=(10,))
         self.loop.start()
         
-    def set_rate(self, t):
-        """ Sets the rate to send commands to the robot in ms """
-        self.rate = rospy.Rate(t)
 
     def control_loop(self, t):
         while not rospy.is_shutdown():
@@ -99,6 +105,10 @@ class BaxterInterface(object):
 
             rate.sleep()
         print "Rospy shutdown, exiting command loop."
+
+    def set_rate(self, t):
+        """ Sets the rate to send commands to the robot in ms """
+        self.rate = rospy.Rate(t)
         
     def idle(self): 
         self.queue.put({"mode":"idle"})
