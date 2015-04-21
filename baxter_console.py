@@ -174,9 +174,11 @@ class BaxterInterface(object):
         with open(filename).readlines() as filelines:
             keys = filelines[0].split(',')
             for position_line in filelines[1:]:
-                this_position = {}
+                this_position_dict = {}
+                position_pieces = position_line.split(',')
                 for i in range(1,len(keys)):
-                    this_position[key[i]] = position_line[i]
+                    this_position_dict[key[i]] = position_pieces[i]
+                self.motion_queue.append({"duration" : position_pieces[0], "positions" : this_position_dict})
              
 if __name__ == '__main__':
     baxter = BaxterInterface()
