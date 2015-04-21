@@ -19,7 +19,7 @@ import cv_bridge
 from sensor_msgs.msg import Image
 
 banner = "WELCOME TO BAXTER"
-DEFAULT_RATE = 1000
+DEFAULT_RATE = 0.05
 
 class BaxterInterface(object):
 
@@ -58,7 +58,7 @@ class BaxterInterface(object):
         self.right_limb = baxter_interface.Limb('right')
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
-        self.rate = rospy.Rate(DEFAULT_RATE)
+        self.rate = DEFAULT_RATE
 
         # create and start the command loop
         self.loop = multiprocessing.Process(target=self.control_loop,
@@ -76,8 +76,9 @@ class BaxterInterface(object):
 
             # JOINTS: set baxter's joint angles based on current mode
             if self.state["mode"] == "idle":
-                self.left_limb.set_joint_positions(IDLE_ANGLES['left'])
-                self.right_limb.set_joint_positions(IDLE_ANGLES['right'])
+                #self.left_limb.set_joint_positions(IDLE_ANGLES['left'])
+                #self.right_limb.set_joint_positions(IDLE_ANGLES['right'])
+                print "IDLE"
             if self.state["mode"] == "file_playback":
                 # set joint positions according to csv file/timer
                 pass
@@ -105,7 +106,7 @@ class BaxterInterface(object):
                         self.send_image('default.jpg')
                         self.image_timer = None
 
-            rate.sleep()
+            time.sleep(self.rate)
         print "Rospy shutdown, exiting command loop."
 
     def set_rate(self, t):
