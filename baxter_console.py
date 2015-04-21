@@ -9,7 +9,7 @@ import rospy
 import baxter_interface
 class BaxterInterfaceTeleop(object):
 
-    def __init__(self, baxter):
+    def __init__(self):
         self.test = "test"
         self.motion_state = "idle"
         self.__head = baxter_interface.Head()
@@ -21,7 +21,6 @@ class BaxterInterfaceTeleop(object):
         self.loop = multiprocessing.Process(target=self.control_loop,
                 args=(10,))
         self.loop.start()
-        self.baxter = baxter
     def control_loop(self, t):
         while not self.stopped:
             if not self.queue.empty():
@@ -81,7 +80,15 @@ class BaxterInterfaceTeleop(object):
     def interact(self):
         baxter = self
         code.interact(banner=banner, local=locals())
-
+    def load_position_file(self, filename):
+        with open(filename).readlines() as filelines:
+            keys = filelines[0].split(',')
+            for position_line in filelines[1:]:
+                this_position = {}
+                for i in range(1,len(keys)):
+                    this_position[key[i]] = position_line[i]
+                self.motion_queue.append("duration" : position_line[0], "position" : this_position)
+             
 if __name__ == '__main__':
     baxter = BaxterInterface()
     baxter.interact()
