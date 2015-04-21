@@ -15,11 +15,30 @@ import sys
 import argparse
 import cv2
 import cv_bridge
-
+import threading
 from sensor_msgs.msg import Image
 
 banner = "WELCOME TO BAXTER"
 DEFAULT_RATE = 1000
+IDLE_ANGLES = {
+    'right_s0' : 0,
+    'right_s1' : 0,
+    'right_e0' : 0,
+    'right_e1' : 0,
+    'right_w0' : 0,
+    'right_w1' : 0,
+    'right_w2' : 0,
+    'left_s0' : 0,
+    'left_s1' : 0,
+    'left_e0' : 0,
+    'left_e1' : 0,
+    'left_w0' : 0,
+    'left_w1' : 0,
+    'left_w2' : 0,
+    'head_pan' : 0,
+    'nod' : 0
+    }
+DEFAULT_IMAGE = 'go.png'
 
 class BaxterInterface(object):
 
@@ -28,21 +47,25 @@ class BaxterInterface(object):
         # initialize console variables
         self.state = dict()
         self.state["mode"] = "idle"
+        self.state_lock = threading.Lock()
         self.image_timer = None
         self.image_queue = deque()
+        self.image_queue_lock = threading.Lock()
         self.motion_queue = deque()
+        self.motion_queue_lock = threading.Lock()
         self.motion_timer = None
-        self.queue = multiprocessing.Queue()
         self.mirrored = False
         self.user = 1
-
+        self.thread = stopthread.StopThread(lambda : self.control_loop(None))
+        self.state_queue = deque()
+        self.state_queue_lock = threading.Lock()
         # initialize the robot
         print("Initializing node... ")
         rospy.init_node("teleoperation")
         print("Getting robot state... ")
         rs = baxter_interface.RobotEnable(CHECK_VERSION)
         init_state = rs.state().enabled
-
+        
         def clean_shutdown():
             print("\nExiting...")
             if not init_state:
@@ -56,40 +79,95 @@ class BaxterInterface(object):
         # create interfaces to limbs and kinect tracking
         self.left_limb = baxter_interface.Limb('left')
         self.right_limb = baxter_interface.Limb('right')
+        self.head = baxter_interface.Head()
         self.tfBuffer = tf2_ros.Buffer()
         self.listener = tf2_ros.TransformListener(self.tfBuffer)
         self.rate = rospy.Rate(DEFAULT_RATE)
-
+        self.teleop = False
         # create and start the command loop
-        self.loop = multiprocessing.Process(target=self.control_loop,
-                args=(10,))
-        self.loop.start()
-        
+        #self.loop = multiprocessing.Process(target=self.control_loop,
+                #args=(10,))
+        #self.loop.start()
+        self.exit = False
+        self.right_limb.set_joint_positions(IDLE_ANGLES)
+        self.left_limb.set_joint_positions(IDLE_ANGLES)
+        self.head.set_pan(0)
+        self.send_image(DEFAULT_IMAGE)
 
+
+        
     def control_loop(self, t):
-        while not rospy.is_shutdown():
+        while not rospy.is_shutdown() and not self.exit:
             print "loop entered"
-            # USER COMMANDS: empty the queue of console commands
-            while not self.queue.empty():
-                command = self.queue.get()
-                self.state[command['k']] = command['v']
 
             # JOINTS: set baxter's joint angles based on current mode
-            if self.state["mode"] == "idle":
-                self.left_limb.set_joint_positions(IDLE_ANGLES['left'])
-                self.right_limb.set_joint_positions(IDLE_ANGLES['right'])
-            if self.state["mode"] == "file_playback":
-                # set joint positions according to csv file/timer
-                pass
-            if self.state["mode"] == "teleoperated":
+            if self.teleop:
                 joint_angles = get_joint_angles(self.user, self.tfBuffer, False, self.mirrored)
                 if joint_angles is not None:
                     self.left_limb.set_joint_positions(joint_angles['left'])
                     self.right_limb.set_joint_positions(joint_angles['right'])
-            if self.state["mode"] == "load_csv":
-                print "load csv file"
-
+            
+            #pop state queue if other queues are empty
+            self.state_queue_lock.acquire()
+            self.motion_queue_lock.acquire()
+            self.image_queue_lock.acquire()
+            empty_queues = len(self.motion_queue) == 0 and len(self.image_queue) == 0
+            self.motion_queue_lock.release()
+            self.image_queue_lock.release()
+            if len(self.motion_queue) == 0 and len(self.image_queue) == 0 and len(self.state_queue) > 0:
+                #pop state
+                next_state = self.state_queue.pop()
+                if 'image_mode' in next_state:
+                    if next_state['image_mode'] == 'load_csv_file':
+                        self.load_images_file(next_state['image_filepath'])
+                    elif next_state['image_mode'] == 'list':
+                        for image in next_state['image_list']:
+                            self.queue_image(image['filepath'], image['duration'])
+                                             
+                if 'position_mode' in next_state:
+                    self.teleop = False
+                    if next_state['position_mode'] == 'load_csv_file':
+                        self.load_position_file(filename)
+                    elif next_state['position_mode'] == 'list':
+                        for motion in next_state['position_list']:
+                            self.add_motion(motion["duration"], motion["angles"])
+                    elif next_state['position_mode'] == 'teleoperation':
+                       self.teleop = True
+                       self.motion_timer = None  
+                elif 'start_teleoperation' in next_state:
+                    self.start_teleoperation(next_state['scenario_number'])
+                    self.state_queue.appendleft({'position_mode' : 'teleoperation'})
+            self.state_queue_lock.release()       
+                            
+            
+            
+            #motion queue checking
+            self.motion_queue_lock.acquire()
+            if self.motion_timer is not None:
+                self.motion_timer = self.motion_timer + self.rate
+            if len(self.motion_queue) >= 0:
+                if self.motion_timer is None:
+                   self.right_limb.set_joint_positions(self.motion_queue[0])
+                   self.left_limb.set_joint_positions(self.motion_queue[0])
+                   if 'head_pan' in self.motion_queue[0]:
+                       self.head.set_pan(self.motion_queue[0]['head_pan'])
+                   if 'head_nod' in self.motion_queue[0] and self.motion_queue[0] == 1:
+                       self.head.command_nod()
+                       
+                   self.motion_timer = 0
+                   
+                elif self.motion_timer > self.motion_queue[0]['duration']:
+                    self.motion_queue.pop()
+                    if len(self.motion_queue) == 0:
+                       self.right_limb.set_joint_positions(IDLE_ANGLES)
+                       self.left_limb.set_joint_positions(IDLE_ANGLES)
+                       self.head.set_pan(0)
+                       
+                    self.motion_timer == 0
+            self.motion_queue_lock.release()
+            
             # SCREEN IMAGES 
+            self.image_queue_lock.acquire()
             if self.image_timer is not None:
                 self.image_timer = self.image_timer + self.rate
             if len(self.image_queue) > 0:
@@ -102,10 +180,15 @@ class BaxterInterface(object):
                         self.send_image(self.image_queue[0]['path'])
                         self.image_timer = 0
                     if len(self.image_queue) == 0:
-                        self.send_image('default.jpg')
+                        self.send_image(DEFAULT_IMAGE)
                         self.image_timer = None
-
-            rate.sleep()
+            self.image_queue_lock.release()
+           
+            time.sleep(self.rate)
+        
+        self.thread.stop()
+        if self.exit:
+            rospy.Shutdown()
         print "Rospy shutdown, exiting command loop."
 
     def set_rate(self, t):
@@ -133,24 +216,18 @@ class BaxterInterface(object):
                 self.queue_image("eyesOpened.png", 3)
             elif transition == 3:
                 self.queue_image("on with patrick.png", 3)
-        self.queue.put({"mode":"teleoperated"})
 
     def stop_teleoperation(self):
         self.queue.put({"mode":"idle"})
 
-    def queue_file(self, filename):
-        ''' Play a csv file of joint angles '''
-        # read file
-        # for row in file, add position to queue
     
     def queue_image(self, new_image, duration):
         ''' Adds the image to a queue of images to be shown for a specified amount of time '''
+        self.image_queue_lock.aquire()
         self.image_queue.append({'duration': duration * 1000, 'path': new_image })
+        self.image_queue_lock.release()
         print "Image added to queue."
-            
-    def nod(self):
-        print "baxter nods"
-        self.__head.command_nod()
+
 
     def send_image(self, path):
         """
@@ -170,6 +247,16 @@ class BaxterInterface(object):
         baxter = self
         code.interact(banner=banner, local=locals())
         
+    def load_image_file(self, filename):
+        with open(filename).readlines() as filelines:
+            keys = filelines[0].split(',')
+            for image_line in filelines[1:]:
+                this_image_dict = {}
+                image_pieces = position_line.split(',')
+                for i in range(0,len(keys)):
+                    this_image_dict[key[i]] = position_pieces[i]
+                self.queue_image(this_image_dict['filepath'], this_image_dict['duration'])
+                
     def load_position_file(self, filename):
         with open(filename).readlines() as filelines:
             keys = filelines[0].split(',')
@@ -178,8 +265,20 @@ class BaxterInterface(object):
                 position_pieces = position_line.split(',')
                 for i in range(1,len(keys)):
                     this_position_dict[key[i]] = position_pieces[i]
-                self.motion_queue.append({"duration" : position_pieces[0], "positions" : this_position_dict})
-             
+                self.add_motion(position_pieces[0], this_position_dict)
+    
+    def queue_state(self, dict):
+        self.state_queue_lock.acquire()
+        self.state_queue.append(dict)
+        self.state_queue_lock.release()
+        
+   
+        
+    def add_motion(self, duration, motion_dict):
+        self.motion_queue_lock.acquire()
+        self.motion_queue.append({"duration" : position_pieces[0], "positions" : this_position_dict}) 
+        self.motion_queue_lock.release()      
+
 if __name__ == '__main__':
     baxter = BaxterInterface()
     baxter.interact()
