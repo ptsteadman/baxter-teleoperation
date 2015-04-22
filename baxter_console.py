@@ -40,7 +40,7 @@ IDLE_ANGLES = {
     'head_pan' : 0,
     'nod' : 0
     }
-DEFAULT_IMAGE = 'images/eyesClosed.png'
+DEFAULT_IMAGE = 'images/blankScreen.png'
 
 class BaxterInterface(object):
 
@@ -138,9 +138,9 @@ class BaxterInterface(object):
             # JOINT POSITIONS
             if self.current_state['position_mode'] != "idle":
                 if self.current_state['position_mode'] == "stopping":
-                    self.right_limb.set_joint_positions(IDLE_ANGLES)
-                    self.left_limb.set_joint_positions(IDLE_ANGLES)
-                    self.head.set_pan(0)
+                    self.load_position_file("csv/idle.csv")
+                    self.set_joint_angles(self.motion_queue[0])
+                    self.motion_queue.popleft()
                     self.current_state['position_mode'] = "idle"
                 elif self.current_state['position_mode'] == "teleoperation":
                     # if the robot is being teleoperated, get kinect joint angles
@@ -157,14 +157,8 @@ class BaxterInterface(object):
                     if len(self.motion_queue) > 0:
                         #ready to publish new motion
                         if self.motion_timer is None:
-                           self.right_limb.set_joint_positions(self.motion_queue[0])
-                           self.left_limb.set_joint_positions(self.motion_queue[0])
-                           if 'head_pan' in self.motion_queue[0]:
-                               self.head.set_pan(self.motion_queue[0]['head_pan'])
-                           # self.motion_queue[0] == 1 ?
-                           if 'head_nod' in self.motion_queue[0] and self.motion_queue[0] == 1:
-                               self.head.command_nod()
-                           self.motion_timer = 0
+                            self.set_joint_angles(self.motion_queue[0])
+                            self.motion_timer = 0
                         #motion expired (publish new motion next turn if queue not empty)
                         elif self.motion_timer >= self.motion_queue[0]['duration']:
                             if self.motion_queue[0] != 0 and len(self.motion_queue) == 0:
@@ -204,7 +198,6 @@ class BaxterInterface(object):
         print "Rospy shutdown, exiting command loop."
 
     # User Functions
-
     def idle(self): 
         self.queue_state({"position_mode":"stopping", "image_mode": "stopping"})
     
@@ -223,13 +216,20 @@ class BaxterInterface(object):
         self.state_queue.append(dict)
         self.state_queue_lock.release()
          
-    
+
     # Internal Functions
+    def set_joint_angles(self, angles):
+        self.right_limb.set_joint_positions(angles)
+        self.left_limb.set_joint_positions(angles)
+        if 'head_pan' in angles:
+            self.head.set_pan(angles['head_pan'])
+        if 'head_nod' in angles and angles['head_nod'] == 1:
+            self.head.command_nod()
+
     def queue_motion(self, duration, motion_dict):
         self.motion_queue_lock.acquire()
         self.motion_queue.append({"duration" : int(duration), "positions" : motion_dict}) 
         self.motion_queue_lock.release()      
-
     
     def queue_image(self, new_image, duration):
         ''' Adds the image to a queue of images to be shown for a specified amount of time '''
