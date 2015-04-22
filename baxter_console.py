@@ -22,24 +22,6 @@ from teleoperate import get_joint_angles
 
 BANNER = "WELCOME TO BAXTER"
 DEFAULT_RATE = 10
-IDLE_ANGLES = {
-    'right_s0' : 0,
-    'right_s1' : 0,
-    'right_e0' : 0,
-    'right_e1' : 0,
-    'right_w0' : 0,
-    'right_w1' : 0,
-    'right_w2' : 0,
-    'left_s0' : 3.14,
-    'left_s1' : 0,
-    'left_e0' : 0,
-    'left_e1' : 3.14,
-    'left_w0' : 0,
-    'left_w1' : 0,
-    'left_w2' : 0,
-    'head_pan' : 0,
-    'nod' : 0
-    }
 DEFAULT_IMAGE = 'images/blankScreen.png'
 
 class BaxterInterface(object):
@@ -121,7 +103,7 @@ class BaxterInterface(object):
                 if 'position_mode' in self.current_state:
                     # load a csv file for positions
                     if self.current_state['position_mode'] == 'csv_file':
-                        self.load_position_file(filename)
+                        self.load_position_file(self.current_state['position_file'])
                     # list of positions with duration
                     elif self.current_state['position_mode'] == 'list':
                         for motion in self.current_state['position_list']:
@@ -129,7 +111,6 @@ class BaxterInterface(object):
                     # start teleop WITH transition first
                     elif self.current_state['position_mode'] ==  'teleoperation_transition':
                         self.queue_transition(self.current_state['transition'])
-                        self.current_state['image_mode'] = "csv_file"
                         self.state_queue.appendleft({'position_mode' : 'teleoperation'})
                 else:
                     self.current_state['position_mode'] = "idle"
@@ -139,7 +120,7 @@ class BaxterInterface(object):
             if self.current_state['position_mode'] != "idle":
                 if self.current_state['position_mode'] == "stopping":
                     self.load_position_file("csv/idle.csv")
-                    self.set_joint_angles(self.motion_queue[0])
+                    self.set_joint_angles(self.motion_queue[0]['positions'])
                     self.motion_queue.popleft()
                     self.current_state['position_mode'] = "idle"
                 elif self.current_state['position_mode'] == "teleoperation":
@@ -157,7 +138,7 @@ class BaxterInterface(object):
                     if len(self.motion_queue) > 0:
                         #ready to publish new motion
                         if self.motion_timer is None:
-                            self.set_joint_angles(self.motion_queue[0])
+                            self.set_joint_angles(self.motion_queue[0]['positions'])
                             self.motion_timer = 0
                         #motion expired (publish new motion next turn if queue not empty)
                         elif self.motion_timer >= self.motion_queue[0]['duration']:
@@ -202,8 +183,7 @@ class BaxterInterface(object):
         self.queue_state({"position_mode":"stopping", "image_mode": "stopping"})
     
     def standby(self): 
-        self.queue_state({"image_mode":"list", "image_list":[{"duration":0, "filepath":"images/on.png"}]})
-        # TODO: standby position
+        self.queue_state({"image_mode":"list", "image_list":[{"duration":0, "filepath":"images/on.png"}],"position_mode":"csv_file","position_file":"csv/standby.csv"})
 
     def start_teleoperation(self, transition=1):
         if transition == 1:
@@ -219,6 +199,7 @@ class BaxterInterface(object):
 
     # Internal Functions
     def set_joint_angles(self, angles):
+        print angles
         self.right_limb.set_joint_positions(angles)
         self.left_limb.set_joint_positions(angles)
         if 'head_pan' in angles:
@@ -278,14 +259,14 @@ class BaxterInterface(object):
                 this_position_dict = {}
                 position_pieces = position_line.split(',')
                 for i in range(1,len(keys)):
-                    this_position_dict[keys[i]] = position_pieces[i]
+                    this_position_dict[keys[i]] = float(position_pieces[i])
                 self.queue_motion(position_pieces[0], this_position_dict)
     
     def queue_transition(self, transition):
         if transition == 2:
-            self.load_image_file("csv/transition2.csv")
+            self.queue_state({"position_mode":"csv_file", "position_file": "csv/shakeawake.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
         elif transition == 3:
-            self.load_image_file("csv/transition3.csv")
+            self.queue_state({"position_mode":"csv_file", "position_file": "csv/wave.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
 
 if __name__ == '__main__':
     baxter = BaxterInterface()
