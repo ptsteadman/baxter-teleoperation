@@ -1,9 +1,9 @@
 duration,filepath
-3000,images/eyesClosed.png
-1000,images/eyesOpened.png
-250,images/eyesClosed.png
-250,images/eyesOpened.png
-500,images/eyesClosed.png
-150,images/eyesOpened.png
-500,images/smile.png
-3000,images/eyesOpened.png
+300,images/eyesClosed.png
+100,images/eyesOpened.png
+25,images/eyesClosed.png
+25,images/eyesOpened.png
+50,images/eyesClosed.png
+15,images/eyesOpened.png
+50,images/smile.png
+300,images/eyesOpened.png

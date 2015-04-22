@@ -18,6 +18,7 @@ import cv_bridge
 import threading
 import stopthread
 from sensor_msgs.msg import Image
+from teleoperate import get_joint_angles
 
 BANNER = "WELCOME TO BAXTER"
 DEFAULT_RATE = 10
@@ -104,7 +105,7 @@ class BaxterInterface(object):
             # motion and image queues are released in case we need to add to them
             if empty_queues and len(self.state_queue) > 0:
                 # pop state queue if image and state queues are empty/finished
-                self.current_state = self.state_queue.pop()
+                self.current_state = self.state_queue.popleft()
                 # look for image data
                 if 'image_mode' in self.current_state:
                     # load a csv file for images
@@ -169,7 +170,7 @@ class BaxterInterface(object):
                             if self.motion_queue[0] != 0 and len(self.motion_queue) == 0:
                                 # if duration is 0, hold position indefinitely
                                 self.current_state["position_mode"] == "stopping"
-                            self.motion_queue.pop()
+                            self.motion_queue.popleft()
                             self.motion_timer == None
                     self.motion_queue_lock.release()
             
@@ -194,7 +195,7 @@ class BaxterInterface(object):
                             if self.image_queue[0]['duration'] != 0 and len(self.image_queue) == 0:
                                 # if duration is 0, display image indefinitely
                                 self.current_state["image_mode"] = "stopping"
-                            self.image_queue.pop()
+                            self.image_queue.popleft()
                             self.image_timer = None
                     self.image_queue_lock.release()
             self.rate.sleep()
@@ -226,14 +227,14 @@ class BaxterInterface(object):
     # Internal Functions
     def queue_motion(self, duration, motion_dict):
         self.motion_queue_lock.acquire()
-        self.motion_queue.append({"duration" : duration, "positions" : motion_dict}) 
+        self.motion_queue.append({"duration" : int(duration), "positions" : motion_dict}) 
         self.motion_queue_lock.release()      
 
     
     def queue_image(self, new_image, duration):
         ''' Adds the image to a queue of images to be shown for a specified amount of time '''
         self.image_queue_lock.acquire()
-        self.image_queue.append({'duration': duration, 'filepath': new_image })
+        self.image_queue.append({'duration': int(duration), 'filepath': new_image })
         self.image_queue_lock.release()
 
     def send_image(self, path):
