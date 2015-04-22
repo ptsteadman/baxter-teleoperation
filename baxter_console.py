@@ -109,7 +109,7 @@ class BaxterInterface(object):
                 if 'image_mode' in self.current_state:
                     # load a csv file for images
                     if self.current_state['image_mode'] == 'csv_file':
-                        self.load_images_file(self.current_state['image_filepath'])
+                        self.load_image_file(self.current_state['image_filepath'])
                     # list of images with duration
                     elif self.current_state['image_mode'] == 'list':
                         for image in self.current_state['image_list']:
@@ -128,6 +128,7 @@ class BaxterInterface(object):
                     # start teleop WITH transition first
                     elif self.current_state['position_mode'] ==  'teleoperation_transition':
                         self.queue_transition(self.current_state['transition'])
+                        self.current_state['image_mode'] = "csv_file"
                         self.state_queue.appendleft({'position_mode' : 'teleoperation'})
                 else:
                     self.current_state['position_mode'] = "idle"
@@ -255,23 +256,28 @@ class BaxterInterface(object):
         code.interact(banner=BANNER, local=locals())
         
     def load_image_file(self, filename):
-        with open(filename).readlines() as filelines:
-            keys = filelines[0].split(',')
+        with open(filename) as f:
+            filelines = f.readlines()
+            keys = filelines[0].rstrip('\n').split(',')
             for image_line in filelines[1:]:
+                image_line = image_line.rstrip('\n')
                 this_image_dict = {}
-                image_pieces = position_line.split(',')
+                image_pieces = image_line.split(',')
                 for i in range(0,len(keys)):
-                    this_image_dict[key[i]] = position_pieces[i]
+                    this_image_dict[keys[i]] = image_pieces[i]
+                print this_image_dict
                 self.queue_image(this_image_dict['filepath'], this_image_dict['duration'])
                 
     def load_position_file(self, filename):
-        with open(filename).readlines() as filelines:
-            keys = filelines[0].split(',')
+        with open(filename) as f:
+            filelines = f.readlines()
+            keys = filelines[0].rstrip('\n').split(',')
             for position_line in filelines[1:]:
+                position_line = position_line.rstrip('\n')
                 this_position_dict = {}
                 position_pieces = position_line.split(',')
                 for i in range(1,len(keys)):
-                    this_position_dict[key[i]] = position_pieces[i]
+                    this_position_dict[keys[i]] = position_pieces[i]
                 self.queue_motion(position_pieces[0], this_position_dict)
     
     def queue_transition(self, transition):
