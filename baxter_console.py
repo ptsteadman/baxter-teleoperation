@@ -259,7 +259,7 @@ class BaxterInterface(object):
             filelines = f.readlines()
             keys = filelines[0].rstrip('\n').split(',')
             for position_line in filelines[1:]:
-                position_line = position_line.rstrip('\n')
+                position_line = position_line.rstrip()
                 this_position_dict = {}
                 position_pieces = position_line.split(',')
                 for i in range(1,len(keys)):
