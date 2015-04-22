@@ -108,10 +108,6 @@ class BaxterInterface(object):
                     elif self.current_state['position_mode'] == 'list':
                         for motion in self.current_state['position_list']:
                             self.queue_motion(motion["duration"], motion["angles"])
-                    # start teleop WITH transition first
-                    elif self.current_state['position_mode'] ==  'teleoperation_transition':
-                        self.queue_transition(self.current_state['transition'])
-                        self.state_queue.appendleft({'position_mode' : 'teleoperation'})
                 else:
                     self.current_state['position_mode'] = "idle"
             self.state_queue_lock.release()       
@@ -189,7 +185,12 @@ class BaxterInterface(object):
         if transition == 1:
             self.queue_state({"position_mode":"teleoperation"})
         else:
-            self.queue_state({"position_mode":"teleoperation_transition","transition": transition})
+            if transition == 2:
+                self.queue_state({"position_mode":"csv_file", "position_file": "csv/shakeawake.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
+                self.queue_state({"position_mode":"teleoperation"})
+            elif transition == 3:
+                self.queue_state({"position_mode":"csv_file", "position_file": "csv/wave.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
+                self.queue_state({"position_mode":"teleoperation"})
 
     def queue_state(self, dict):
         self.state_queue_lock.acquire()
@@ -262,12 +263,6 @@ class BaxterInterface(object):
                     this_position_dict[keys[i]] = float(position_pieces[i])
                 self.queue_motion(position_pieces[0], this_position_dict)
     
-    def queue_transition(self, transition):
-        if transition == 2:
-            self.queue_state({"position_mode":"csv_file", "position_file": "csv/shakeawake.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
-        elif transition == 3:
-            self.queue_state({"position_mode":"csv_file", "position_file": "csv/wave.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
-
 if __name__ == '__main__':
     baxter = BaxterInterface()
     baxter.interact()
