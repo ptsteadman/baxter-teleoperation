@@ -3,7 +3,6 @@
 import code
 from collections import deque
 import time
-import multiprocessing
 import rospy
 import tf2_ros
 import baxter_interface
@@ -115,6 +114,7 @@ class BaxterInterface(object):
             # JOINT POSITIONS
             if self.current_state['position_mode'] != "idle":
                 if self.current_state['position_mode'] == "stopping":
+                    self.motion_queue.clear()
                     self.load_position_file("csv/idle.csv")
                     self.set_joint_angles(self.motion_queue[0]['positions'])
                     self.motion_queue.popleft()
@@ -126,6 +126,7 @@ class BaxterInterface(object):
                     if joint_angles is not None:
                         self.left_limb.set_joint_positions(joint_angles['left'])
                         self.right_limb.set_joint_positions(joint_angles['right'])
+                    # TODO: detect kinect tracking error, and go back to idle?
                 else:
                     # if the robot is not idle or teleoperated, check motion queue
                     self.motion_queue_lock.acquire()
@@ -140,9 +141,9 @@ class BaxterInterface(object):
                         elif self.motion_timer >= self.motion_queue[0]['duration']:
                             if self.motion_queue[0] != 0 and len(self.motion_queue) == 0:
                                 # if duration is 0, hold position indefinitely
-                                self.current_state["position_mode"] == "stopping"
+                                self.current_state["position_mode"] = "stopping"
                             self.motion_queue.popleft()
-                            self.motion_timer == None
+                            self.motion_timer = None
                     self.motion_queue_lock.release()
             
             #IMAGES
@@ -192,6 +193,10 @@ class BaxterInterface(object):
                 self.queue_state({"position_mode":"csv_file", "position_file": "csv/wave.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
                 self.queue_state({"position_mode":"teleoperation"})
 
+    def test_motion(self):
+        self.queue_state({"position_mode":"csv_file", "position_file": "csv/test.csv"})
+
+
     def queue_state(self, dict):
         self.state_queue_lock.acquire()
         self.state_queue.append(dict)
@@ -200,7 +205,6 @@ class BaxterInterface(object):
 
     # Internal Functions
     def set_joint_angles(self, angles):
-        print angles
         self.right_limb.set_joint_positions(angles)
         self.left_limb.set_joint_positions(angles)
         if 'head_pan' in angles:
@@ -248,7 +252,6 @@ class BaxterInterface(object):
                 image_pieces = image_line.split(',')
                 for i in range(0,len(keys)):
                     this_image_dict[keys[i]] = image_pieces[i]
-                print this_image_dict
                 self.queue_image(this_image_dict['filepath'], this_image_dict['duration'])
                 
     def load_position_file(self, filename):
