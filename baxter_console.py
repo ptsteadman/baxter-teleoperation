@@ -67,9 +67,10 @@ class BaxterInterface(object):
         self.rate = rospy.Rate(DEFAULT_RATE)
 
         #starting position
-        self.idle()
         self.thread = stopthread.StopThread(lambda : self.control_loop())
+        self.idle()
         self.thread.start()
+        self.idle()
 
     def control_loop(self):
         while not rospy.is_shutdown():
@@ -126,7 +127,8 @@ class BaxterInterface(object):
                     if joint_angles is not None:
                         self.left_limb.set_joint_positions(joint_angles['left'])
                         self.right_limb.set_joint_positions(joint_angles['right'])
-                    # TODO: detect kinect tracking error, and go back to idle?
+                    else:
+                        self.idle()
                 else:
                     # if the robot is not idle or teleoperated, check motion queue
                     self.motion_queue_lock.acquire()
@@ -138,7 +140,7 @@ class BaxterInterface(object):
                             self.set_joint_angles(self.motion_queue[0]['positions'])
                             self.motion_timer = 0
                         #motion expired (publish new motion next turn if queue not empty)
-                        elif self.motion_timer >= self.motion_queue[0]['duration']:
+                        elif self.motion_timer >= self.motion_queue[0]['duration'] - DEFAULT_RATE:
                             if self.motion_queue[0] != 0 and len(self.motion_queue) == 0:
                                 # if duration is 0, hold position indefinitely
                                 self.current_state["position_mode"] = "stopping"
@@ -163,7 +165,7 @@ class BaxterInterface(object):
                             self.send_image(self.image_queue[0]['filepath'])
                             self.image_timer = 0
                         #image expired (publish new image next turn if queue not empty)
-                        elif self.image_timer > self.image_queue[0]['duration']:
+                        elif self.image_timer >= self.image_queue[0]['duration'] - DEFAULT_RATE:
                             if self.image_queue[0]['duration'] != 0 and len(self.image_queue) == 0:
                                 # if duration is 0, display image indefinitely
                                 self.current_state["image_mode"] = "stopping"
@@ -187,10 +189,10 @@ class BaxterInterface(object):
             self.queue_state({"position_mode":"teleoperation"})
         else:
             if transition == 2:
-                self.queue_state({"position_mode":"csv_file", "position_file": "csv/shakeawake.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
+                self.queue_state({"position_mode":"csv_file", "position_file": "csv/awake2andwave.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
                 self.queue_state({"position_mode":"teleoperation"})
             elif transition == 3:
-                self.queue_state({"position_mode":"csv_file", "position_file": "csv/wave.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
+                self.queue_state({"position_mode":"csv_file", "position_file": "csv/awake2andArmsUp.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
                 self.queue_state({"position_mode":"teleoperation"})
 
     def test_motion(self):
@@ -209,7 +211,7 @@ class BaxterInterface(object):
         self.left_limb.set_joint_positions(angles)
         if 'head_pan' in angles:
             self.head.set_pan(angles['head_pan'])
-        if 'head_nod' in angles and angles['head_nod'] == 1:
+        if 'head_nod' in angles and angles['head_nod'] > 0.1:
             self.head.command_nod()
 
     def queue_motion(self, duration, motion_dict):
