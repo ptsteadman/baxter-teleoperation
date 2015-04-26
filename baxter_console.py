@@ -17,7 +17,7 @@ import cv_bridge
 import threading
 import stopthread
 from sensor_msgs.msg import Image
-from teleoperate import get_joint_angles
+from teleoperate_tweaked import get_joint_angles
 
 BANNER = "WELCOME TO BAXTER"
 DEFAULT_RATE = 10
@@ -189,13 +189,13 @@ class BaxterInterface(object):
 
     def start_teleoperation(self, transition=1):
         if transition == 1:
-            self.queue_state({"position_mode":"teleoperation"})
+            self.queue_state({"position_mode":"teleoperation","image_mode":"list", "image_list":[{"duration":0, "filepath":"images/on.png"}]})
         else:
             if transition == 2:
-                self.queue_state({"position_mode":"csv_file", "position_file": "csv/awake2andwave.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
+                self.queue_state({"position_mode":"csv_file", "position_file": "csv/raise_hand.csv","image_mode":"csv_file", "image_filepath":"csv/transition2.csv"})
                 self.queue_state({"position_mode":"teleoperation"})
             elif transition == 3:
-                self.queue_state({"position_mode":"csv_file", "position_file": "csv/awake2andArmsUp.csv","image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
+                self.queue_state({"image_mode":"csv_file","image_filepath":"csv/transition3.csv"})
                 self.queue_state({"position_mode":"teleoperation"})
 
     def test_motion(self):
