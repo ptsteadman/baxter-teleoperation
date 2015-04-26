@@ -40,6 +40,7 @@ class BaxterInterface(object):
         self.state_queue_lock = threading.Lock()
         self.current_state = None
         self.exit = False
+        self.angles = None
 
         # initialize the robot
         print("Initializing node... ")
@@ -125,8 +126,9 @@ class BaxterInterface(object):
                     self.motion_timer = None
                     joint_angles = get_joint_angles(self.user, self.tfBuffer, False, self.mirrored)
                     if joint_angles is not None:
-                        self.left_limb.set_joint_positions(joint_angles['left'])
-                        self.right_limb.set_joint_positions(joint_angles['right'])
+                        # concatenate joint angle dicts
+                        joint_angles['left'].update(joint_angles['right'])
+                        self.set_joint_angles(joint_angles['left'])
                     else:
                         self.idle()
                 else:
@@ -147,6 +149,7 @@ class BaxterInterface(object):
                             self.motion_queue.popleft()
                             self.motion_timer = None
                     self.motion_queue_lock.release()
+            self.move_to_joint_angles()
             
             #IMAGES
             if self.current_state["image_mode"] is not "idle":
@@ -182,7 +185,7 @@ class BaxterInterface(object):
         self.queue_state({"position_mode":"stopping", "image_mode": "stopping"})
     
     def standby(self): 
-        self.queue_state({"image_mode":"list", "image_list":[{"duration":0, "filepath":"images/on.png"}],"position_mode":"csv_file","position_file":"csv/standby.csv"})
+        self.queue_state({"image_mode":"list", "image_list":[{"duration":0, "filepath":"images/waiting.png"}],"position_mode":"csv_file","position_file":"csv/standby.csv"})
 
     def start_teleoperation(self, transition=1):
         if transition == 1:
@@ -206,13 +209,16 @@ class BaxterInterface(object):
          
 
     # Internal Functions
-    def set_joint_angles(self, angles):
-        self.right_limb.set_joint_positions(angles)
-        self.left_limb.set_joint_positions(angles)
-        if 'head_pan' in angles:
-            self.head.set_pan(angles['head_pan'])
-        if 'head_nod' in angles and angles['head_nod'] > 0.1:
+    def move_to_joint_angles(self):
+        self.right_limb.set_joint_positions(self.angles)
+        self.left_limb.set_joint_positions(self.angles)
+        if 'head_pan' in self.angles:
+            self.head.set_pan(self.angles['head_pan'])
+        if 'head_nod' in self.angles and self.angles['head_nod'] > 0.1:
             self.head.command_nod()
+
+    def set_joint_angles(self, angles):
+        self.angles = angles
 
     def queue_motion(self, duration, motion_dict):
         self.motion_queue_lock.acquire()
