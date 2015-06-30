@@ -2,6 +2,8 @@
 
 This repository contains code for an interactive console that allows 
 you to send commands to Baxter, including starting teleoperation.
+Commands can be queued or interrupted for seamless operation.  Also 
+supports playback of joint positions or images as specified in CSV files.
 
 ##### Setup:
 
@@ -33,7 +35,9 @@ Finally, enable the robot and start the console.
 You can then run commands at the `>>>` prompt.  
 
 ### Commands:
-- list 
-- of
-- commands
+- `baxter.idle()` cease teleoperation and move to an idle position (as specified by csv file) 
+- `baxter.standby()` move baxter to the 'psi' kinect calibration pose
+- `baxter.start_teleoperation(transition)` execute one of three transitions to teleoperation, 0=immediate, 1=with animation, 2=with image
+- `baxter.queue_state(dict)` queue images or motions
+- `baxter.send_image(path)` display an image on baxter's face
 
